@@ -12,7 +12,7 @@
 // This may be implemented with 2 to 9 switch gates. The number of switch
 // gates is configured by Excel via Serial connection.
 //
-// This project uses an Adafruit LIS3DH breakout board, information at:
+// This project uses an Adafruit MPU6050 breakout board, information at:
 // https://www.adafruit.com/product/2809
 // This project uses an Arduino UNO microcontroller board, information at:
 // https://www.arduino.cc/en/main/arduinoBoardUno
@@ -26,7 +26,9 @@
 //===----------------------------------------------------------------------===//
 
 // Wire is a library that allows communication via i2c with devices such as
-// the LIS3DH accelerometer. See https://www.arduino.cc/en/Reference/Wire
+// the MPU6050 accelerometer. See https://www.arduino.cc/en/Reference/Wire
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 #include <Wire.h>
 
 // Declaring constant variables to allow us to refer to pins by name, this
@@ -99,6 +101,8 @@ int mSerial_Interval = 50;       // interval between serial writes
 unsigned long mSerial_PreviousTime; // timestamp to track interval
 const int dataRate = 10;         // frequency of serial writes, in milliseconds
 
+//MP6050 accelerometer
+Adafruit_MPU6050 mpu;
 
 // setup() method is a special Arduino method that runs once at beginning of
 // program. Typically used to initialize pins and connections
@@ -107,7 +111,7 @@ void setup(){
   Serial.begin (9600);
 
   // initialized communication with accelerometer
-  // note, if accelerometer has problems, program can hange here
+  // note, if accelerometer has problems, program can hang here
   initializeAccelerometer();
 
   // Set each of our gate pins to be used as input pins
@@ -124,8 +128,6 @@ void setup(){
   // Reset all race variable, so we're ready to go!
   resetTrialVariables();
 }
-
-
 
 // loop() method is a special Arduino function that runs over and over. This
 // function executes from top to bottom and then starts again, it runs forever!
@@ -248,7 +250,6 @@ void processSwitches(){
     }
 }
 
-
 // If race is finished poll force sensor for a reading
 void processForceSensor(){
   if(raceFinished==true && forceReadDone==false) {
@@ -315,10 +316,6 @@ void processOutgoingSerial() {
 //  Note: Code below this line may be technical and somewhat confusing, the
 //  purpose of these functions are to do some complicated things such as
 //  interfacing with external devices.
-//
-//  To communicate with LIS3DH without requiring external libraries, we had
-//  to implement some code in this section may seem very cryptic! Don't worry
-//  it's hard for us to understand as well :)
 //===----------------------------------------------------------------------===//
 
 
@@ -419,104 +416,95 @@ void sendDataToSerial() {
     Serial.println();           // Line ending character
 }
 
-// List of registers used by accelerometer
-#define LIS3DH_ADDRESS           0x18
-#define LIS3DH_REG_STATUS1       0x07
-#define LIS3DH_REG_WHOAMI        0x0F
-#define LIS3DH_REG_TEMPCFG       0x1F
-#define LIS3DH_REG_CTRL1         0x20
-#define LIS3DH_REG_CTRL3         0x22
-#define LIS3DH_REG_CTRL4         0x23
-#define LIS3DH_REG_OUT_Y_L       0x2A
-#define LIS3DH_REG_OUT_Y_H       0x2B
-#define LIS3DH_8G_SCALE_FACTOR  .00024414f
-#define LIS3DH_RANGE_8_G         0b10   // +/- 8g
-
-
-// Initilize LIS3DH see LIS3DH spec sheet
+// Initilize MPU6050
 void initializeAccelerometer() {
-  Wire.begin();
-  Wire.beginTransmission(LIS3DH_ADDRESS); //Connects to LIS3DH via i2c
-  Wire.write (LIS3DH_REG_WHOAMI);         //Check that board is connected
-  Wire.endTransmission(true);
-  Wire.requestFrom (LIS3DH_ADDRESS, 1);
-  uint8_t deviceID = Wire.read();
+  
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");
 
-  while (deviceID != 0x33){
-    for (int time = 0; time < 10000; time++){
-      delay(1); // TODO review looks like a bug... hangs forever if no LIS3DH on first Wire.read() should at least write "No LISD3H" to serial while it hangs
-    }
-    if (deviceID == 0x33){
-      break;
-    }
-    Serial.println("Accelerometer Not Found");
-    delay (20000);
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+    Serial.println("+-2G");
+    break;
+  case MPU6050_RANGE_4_G:
+    Serial.println("+-4G");
+    break;
+  case MPU6050_RANGE_8_G:
+    Serial.println("+-8G");
+    break;
+  case MPU6050_RANGE_16_G:
+    Serial.println("+-16G");
+    break;
+  }
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+    Serial.println("+- 250 deg/s");
+    break;
+  case MPU6050_RANGE_500_DEG:
+    Serial.println("+- 500 deg/s");
+    break;
+  case MPU6050_RANGE_1000_DEG:
+    Serial.println("+- 1000 deg/s");
+    break;
+  case MPU6050_RANGE_2000_DEG:
+    Serial.println("+- 2000 deg/s");
     break;
   }
 
-  //Turn on all axes and set to normal mode
-  writeRegister8 (LIS3DH_REG_CTRL1, 0x07);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+    Serial.println("260 Hz");
+    break;
+  case MPU6050_BAND_184_HZ:
+    Serial.println("184 Hz");
+    break;
+  case MPU6050_BAND_94_HZ:
+    Serial.println("94 Hz");
+    break;
+  case MPU6050_BAND_44_HZ:
+    Serial.println("44 Hz");
+    break;
+  case MPU6050_BAND_21_HZ:
+    Serial.println("21 Hz");
+    break;
+  case MPU6050_BAND_10_HZ:
+    Serial.println("10 Hz");
+    break;
+  case MPU6050_BAND_5_HZ:
+    Serial.println("5 Hz");
+    break;
+  }
 
-  //set data rate
-  uint8_t accelDataRate = readRegister8 (LIS3DH_REG_CTRL1);
-  accelDataRate &= ~(0xF0);
-  accelDataRate |= 0b0111 << 4;   //Change variable to write
-
-  //Set data rate to 400 mHz, used to manage power consumption
-  writeRegister8 (LIS3DH_REG_CTRL1, accelDataRate);
-  writeRegister8 (LIS3DH_REG_CTRL4, 0x88);     //Enebles High Res and BDU
-  writeRegister8 (LIS3DH_REG_CTRL3, 0x10);     // DRDY on INT1
-  writeRegister8 (LIS3DH_REG_TEMPCFG, 0x80);   //Activate ADC outputs
-
-  //Set read scale
-  uint8_t rangeControl = readRegister8 (LIS3DH_REG_CTRL4);
-  rangeControl &= ~(0x30);
-  //Change variable to write make sure to also update the scale factor
-  rangeControl |= LIS3DH_RANGE_8_G << 4;
-  writeRegister8 (LIS3DH_REG_CTRL4, rangeControl);
+  delay(100);
 }
 
 // Reads Y axis force values from accelerometer and returns
 // the highest of 100 sequential reads over a 100ms timespan
 float getMaxYAxisReadFromForceSensor() {
     float maxYAxis = 0;
-    for (int i = 0; i <= 100; i++){
-      Wire.beginTransmission(LIS3DH_ADDRESS);
-      Wire.write(LIS3DH_REG_OUT_Y_L | 0x80);
-      Wire.endTransmission();
+    sensors_event_t a;
 
-      Wire.requestFrom(LIS3DH_ADDRESS, 2);
-      while (Wire.available() < 2);
+    for (int i = 0; i <= 100; i++) {
 
-      uint8_t yla = Wire.read();
-      uint8_t yha = Wire.read();
+      mpu.getEvent(&a);
 
-      float yAxis = yha << 8 | yla;
+      float yAxis = a.acceleration.y;
 
-      yAxis = yAxis * LIS3DH_8G_SCALE_FACTOR;
+      //yAxis = yAxis * LIS3DH_8G_SCALE_FACTOR;
       if (yAxis > maxYAxis) {maxYAxis = yAxis;}
 
       delay (1);
     }
     return maxYAxis;
-}
-
-// configuration of accelerometer, LIS3DH datasheet
-void writeRegister8 (uint8_t reg, uint8_t val){
-  Wire.beginTransmission (LIS3DH_ADDRESS);
-  Wire.write (reg);
-  Wire.write (val);
-  Wire.endTransmission();
-}
-
-// configuration of accelerometer, LIS3DH datasheet
-uint8_t readRegister8 (uint8_t reg){
-  Wire.beginTransmission (LIS3DH_ADDRESS);
-  Wire.write (reg);
-  Wire.endTransmission();
-
-  Wire.requestFrom(LIS3DH_ADDRESS, 1);
-  uint8_t val = Wire.read();
-  return val;
-  Wire.endTransmission();
 }
