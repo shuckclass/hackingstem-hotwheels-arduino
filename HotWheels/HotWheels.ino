@@ -497,7 +497,7 @@ float getMaxYAxisReadFromForceSensor() {
 
     for (int i = 0; i <= 100; i++) {
 
-      mpu.getEvent(&a);
+      mpu.getEvent(&a, NULL, NULL);
 
       float yAxis = a.acceleration.y;
 
